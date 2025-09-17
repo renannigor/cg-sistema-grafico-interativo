@@ -381,15 +381,12 @@ class App(tk.Frame):
         self.lista_objetos.grid(row=0, column=1, sticky="ns", padx=5, pady=5)
         self.lista_objetos.bind("<<ListboxSelect>>", self.on_obj_select)
 
-        # --- PAINEL DE CONTROLES ---
         control_frame = tk.Frame(self)
         control_frame.pack(fill="x", padx=5, pady=5)
         
-        # Botões de objetos e transformações
         tk.Button(control_frame, text="Adicionar Objeto", command=self.abrir_popup_objetos).pack(side="left", padx=2)
         tk.Button(control_frame, text="Aplicar Transformação", command=self.abrir_transformacoes_popup).pack(side="left", padx=2)
         
-        # Navegação (Pan, Zoom, Rotação)
         tk.Label(control_frame, text="  Navegação:").pack(side="left", padx=(10,0))
         tk.Button(control_frame, text="←", command=lambda: self.pan(10, 0)).pack(side="left")
         tk.Button(control_frame, text="→", command=lambda: self.pan(-10, 0)).pack(side="left")
@@ -399,7 +396,6 @@ class App(tk.Frame):
         tk.Button(control_frame, text="Zoom -", command=lambda: self.zoom(1.1)).pack(side="left")
         tk.Button(control_frame, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5, 2))
 
-        # --- PAINEL DE CLIPPING ---
         clipping_frame = tk.Frame(control_frame, borderwidth=1, relief="groove")
         clipping_frame.pack(side="left", padx=(10,0))
         tk.Label(clipping_frame, text=" Algoritmo de Clipping de Reta: ").pack(side="left")
@@ -456,7 +452,6 @@ class App(tk.Frame):
         notebook = ttk.Notebook(popup)
         notebook.pack(expand=True, fill="both", padx=10, pady=5)
 
-        # Aba Ponto
         frame_ponto = ttk.Frame(notebook)
         notebook.add(frame_ponto, text="Ponto")
         nome_ponto, x_ponto, y_ponto = tk.Entry(frame_ponto), tk.Entry(frame_ponto), tk.Entry(frame_ponto)
@@ -468,7 +463,6 @@ class App(tk.Frame):
         y_ponto.grid(row=2, column=1)
         tk.Button(frame_ponto, text="Adicionar", command=lambda: self.add_obj(nome_ponto.get(), TipoObjeto.PONTO.value, [(float(x_ponto.get()), float(y_ponto.get()))], popup, self.selected_color)).grid(row=3, columnspan=2, pady=10)
 
-        # Aba Reta
         frame_reta = ttk.Frame(notebook)
         notebook.add(frame_reta, text="Reta")
         nome_reta, x1, y1, x2, y2 = tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta)
@@ -484,7 +478,6 @@ class App(tk.Frame):
         y2.grid(row=4, column=1)
         tk.Button(frame_reta, text="Adicionar", command=lambda: self.add_obj(nome_reta.get(), TipoObjeto.RETA.value, [(float(x1.get()), float(y1.get())), (float(x2.get()), float(y2.get()))], popup, self.selected_color)).grid(row=5, columnspan=2, pady=10)
 
-        # Aba Polígono
         frame_poli = ttk.Frame(notebook)
         notebook.add(frame_poli, text="Polígono")
         nome_poli = tk.Entry(frame_poli)
@@ -528,7 +521,6 @@ class App(tk.Frame):
         notebook = ttk.Notebook(popup)
         notebook.pack(expand=True, fill="both", padx=10, pady=10)
 
-        # Translação
         frame_t = ttk.Frame(notebook)
         notebook.add(frame_t, text="Translação")
         dx_t, dy_t = tk.Entry(frame_t), tk.Entry(frame_t)
@@ -538,7 +530,6 @@ class App(tk.Frame):
         dy_t.grid(row=1, column=1)
         tk.Button(frame_t, text="Aplicar", command=lambda: self.aplicar_transformacao("translacao", dx=float(dx_t.get() or 0), dy=float(dy_t.get() or 0), popup=popup)).grid(row=2, columnspan=2, pady=10)
 
-        # Escalonamento
         frame_s = ttk.Frame(notebook)
         notebook.add(frame_s, text="Escalonamento")
         sx_s, sy_s = tk.Entry(frame_s), tk.Entry(frame_s)
@@ -548,7 +539,6 @@ class App(tk.Frame):
         sy_s.grid(row=1, column=1)
         tk.Button(frame_s, text="Aplicar", command=lambda: self.aplicar_transformacao("escalonamento_natural", sx=float(sx_s.get() or 1), sy=float(sy_s.get() or 1), popup=popup)).grid(row=2, columnspan=2, pady=10)
 
-        # Rotação
         frame_r = ttk.Frame(notebook)
         notebook.add(frame_r, text="Rotação")
         tk.Label(frame_r, text="Ângulo (graus):").grid(row=0, column=0, sticky="w")
@@ -605,12 +595,10 @@ class App(tk.Frame):
         cx = (self.viewport.wmin[0] + self.viewport.wmax[0]) / 2
         cy = (self.viewport.wmin[1] + self.viewport.wmax[1]) / 2
         largura = (self.viewport.wmax[0] - self.viewport.wmin[0]) * fator
-        altura = (self.viewport.wmax[1] - self.viewport.wmax[1]) * fator
+        altura = (self.viewport.wmax[1] - self.viewport.wmin[1]) * fator
         self.viewport.wmin = (cx - largura / 2, cy - altura / 2)
         self.viewport.wmax = (cx + largura / 2, cy + altura / 2)
         self.redesenhar()
-
-
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("SGI 2D - Clipping (Tamanho Fixo)")
