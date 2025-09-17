@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, colorchooser, messagebox
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from enum import Enum
 import numpy as np
 import ast
@@ -32,31 +32,25 @@ class Transformacoes:
     def get_centro_objeto(self, obj):
         if not obj.coords:
             return (0, 0)
-
         x_coords = [p[0] for p in obj.coords]
         y_coords = [p[1] for p in obj.coords]
-
         cx = sum(x_coords) / len(x_coords)
         cy = sum(y_coords) / len(y_coords)
         return (cx, cy)
 
     def aplicar_escalonamento_natural(self, obj, sx, sy):
         cx, cy = self.get_centro_objeto(obj)
-
         matriz_t1 = self.get_matriz_translacao(-cx, -cy)
         matriz_s = self.get_matriz_escalonamento(sx, sy)
         matriz_t2 = self.get_matriz_translacao(cx, cy)
-
         matriz_final = np.dot(matriz_t2, np.dot(matriz_s, matriz_t1))
         self.aplicar_transformacao_generica(obj, matriz_final)
 
     def aplicar_rotacao_centro_objeto(self, obj, angulo_rad):
         cx, cy = self.get_centro_objeto(obj)
-
         matriz_t1 = self.get_matriz_translacao(-cx, -cy)
         matriz_r = self.get_matriz_rotacao(angulo_rad)
         matriz_t2 = self.get_matriz_translacao(cx, cy)
-
         matriz_final = np.dot(matriz_t2, np.dot(matriz_r, matriz_t1))
         self.aplicar_transformacao_generica(obj, matriz_final)
 
@@ -64,7 +58,6 @@ class Transformacoes:
         matriz_t1 = self.get_matriz_translacao(-px, -py)
         matriz_r = self.get_matriz_rotacao(angulo_rad)
         matriz_t2 = self.get_matriz_translacao(px, py)
-
         matriz_final = np.dot(matriz_t2, np.dot(matriz_r, matriz_t1))
         self.aplicar_transformacao_generica(obj, matriz_final)
 
@@ -72,7 +65,7 @@ class Transformacoes:
 class TipoObjeto(Enum):
     PONTO = "ponto"
     RETA = "reta"
-    WIREFRAME = "wireframe"
+    POLIGONO = "poligono"
 
 
 class Objeto:
@@ -88,7 +81,7 @@ class Objeto:
         self.tipo = tipo
         self.coords = coords
         self.cor = cor
-        self.preenchido = preenchido  # para polígonos
+        self.preenchido = preenchido
 
 
 class DisplayFile:
@@ -107,235 +100,169 @@ class DisplayFile:
                 return obj
         return None
 
-    def get_object_by_coords(self, x, y):
-        for obj in reversed(self.objetos):
-            x_coords = [p[0] for p in obj.coords]
-            y_coords = [p[1] for p in obj.coords]
+class Clipping:
+    # Constantes para Cohen-Sutherland
+    INSIDE = 0  # 0000
+    LEFT = 1    # 0001
+    RIGHT = 2   # 0010
+    BOTTOM = 4  # 0100
+    TOP = 8     # 1000
 
-            x_min, x_max = min(x_coords), max(x_coords)
-            y_min, y_max = min(y_coords), max(y_coords)
+    def _get_outcode(self, x, y, wmin, wmax):
+        code = self.INSIDE
+        if x < wmin[0]:
+            code |= self.LEFT
+        elif x > wmax[0]:
+            code |= self.RIGHT
+        if y < wmin[1]:
+            code |= self.BOTTOM
+        elif y > wmax[1]:
+            code |= self.TOP
+        return code
 
-            margem = 5
-
-            if (
-                x_min - margem <= x <= x_max + margem
-                and y_min - margem <= y <= y_max + margem
-            ):
-                return obj
-        return None
-
-
-# =========================
-# Funções de Clipagem
-# =========================
-
-def point_in_window(px, py, wmin, wmax):
-    return (wmin[0] <= px <= wmax[0]) and (wmin[1] <= py <= wmax[1])
-
-
-# Cohen-Sutherland constants
-INSIDE = 0  # 0000
-LEFT = 1    # 0001
-RIGHT = 2   # 0010
-BOTTOM = 4  # 0100
-TOP = 8     # 1000
-
-
-def compute_out_code(x, y, wmin, wmax):
-    code = INSIDE
-    if x < wmin[0]:
-        code |= LEFT
-    elif x > wmax[0]:
-        code |= RIGHT
-    if y < wmin[1]:
-        code |= BOTTOM
-    elif y > wmax[1]:
-        code |= TOP
-    return code
-
-
-def cohen_sutherland_clip(p1, p2, wmin, wmax) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
-    x1, y1 = p1
-    x2, y2 = p2
-    out1 = compute_out_code(x1, y1, wmin, wmax)
-    out2 = compute_out_code(x2, y2, wmin, wmax)
-    accept = False
-
-    while True:
-        if not (out1 | out2):
-            accept = True
-            break
-        elif out1 & out2:
-            break
-        else:
-            # pick one endpoint outside
-            outcode_out = out1 if out1 != 0 else out2
-            if outcode_out & TOP:
-                x = x1 + (x2 - x1) * (wmax[1] - y1) / (y2 - y1) if y2 != y1 else float('inf')
-                y = wmax[1]
-            elif outcode_out & BOTTOM:
-                x = x1 + (x2 - x1) * (wmin[1] - y1) / (y2 - y1) if y2 != y1 else float('inf')
-                y = wmin[1]
-            elif outcode_out & RIGHT:
-                y = y1 + (y2 - y1) * (wmax[0] - x1) / (x2 - x1) if x2 != x1 else float('inf')
-                x = wmax[0]
-            elif outcode_out & LEFT:
-                y = y1 + (y2 - y1) * (wmin[0] - x1) / (x2 - x1) if x2 != x1 else float('inf')
-                x = wmin[0]
+    def cohen_sutherland(self, p1, p2, wmin, wmax):
+        x1, y1 = p1
+        x2, y2 = p2
+        outcode1 = self._get_outcode(x1, y1, wmin, wmax)
+        outcode2 = self._get_outcode(x2, y2, wmin, wmax)
+        
+        while True:
+            if not (outcode1 | outcode2): # Aceite trivial
+                return [(x1, y1), (x2, y2)]
+            elif outcode1 & outcode2: # Rejeite trivial
+                return []
             else:
-                break
+                x, y = 0, 0
+                outcode_fora = outcode1 if outcode1 else outcode2
 
-            if outcode_out == out1:
-                x1, y1 = x, y
-                out1 = compute_out_code(x1, y1, wmin, wmax)
-            else:
-                x2, y2 = x, y
-                out2 = compute_out_code(x2, y2, wmin, wmax)
+                if outcode_fora & self.TOP:
+                    x = x1 + (x2 - x1) * (wmax[1] - y1) / (y2 - y1)
+                    y = wmax[1]
+                elif outcode_fora & self.BOTTOM:
+                    x = x1 + (x2 - x1) * (wmin[1] - y1) / (y2 - y1)
+                    y = wmin[1]
+                elif outcode_fora & self.RIGHT:
+                    y = y1 + (y2 - y1) * (wmax[0] - x1) / (x2 - x1)
+                    x = wmax[0]
+                elif outcode_fora & self.LEFT:
+                    y = y1 + (y2 - y1) * (wmin[0] - x1) / (x2 - x1)
+                    x = wmin[0]
 
-    if accept:
-        return ((x1, y1), (x2, y2))
-    else:
-        return None
+                if outcode_fora == outcode1:
+                    x1, y1 = x, y
+                    outcode1 = self._get_outcode(x1, y1, wmin, wmax)
+                else:
+                    x2, y2 = x, y
+                    outcode2 = self._get_outcode(x2, y2, wmin, wmax)
 
-
-def liang_barsky_clip(p1, p2, wmin, wmax) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
-    x1, y1 = p1
-    x2, y2 = p2
-    dx = x2 - x1
-    dy = y2 - y1
-
-    p = [-dx, dx, -dy, dy]
-    q = [x1 - wmin[0], wmax[0] - x1, y1 - wmin[1], wmax[1] - y1]
-
-    u1 = 0.0
-    u2 = 1.0
-
-    for pk, qk in zip(p, q):
-        if pk == 0:
-            if qk < 0:
-                return None  # paralelo e fora
-            else:
-                continue
-        r = qk / pk
-        if pk < 0:
-            if r > u2:
-                return None
-            if r > u1:
-                u1 = r
-        else:
-            if r < u1:
-                return None
-            if r < u2:
-                u2 = r
-
-    if u1 > u2:
-        return None
-
-    nx1 = x1 + u1 * dx
-    ny1 = y1 + u1 * dy
-    nx2 = x1 + u2 * dx
-    ny2 = y1 + u2 * dy
-
-    return ((nx1, ny1), (nx2, ny2))
-
-
-# Sutherland-Hodgman polygon clipping against axis-aligned rectangle
-def sutherland_hodgman_clip(polygon: List[Tuple[float, float]], wmin, wmax) -> List[Tuple[float, float]]:
-    def clip_edge(poly, edge):
-        clipped = []
-        for i in range(len(poly)):
-            curr = poly[i]
-            prev = poly[i - 1]
-            inside_curr = edge_inside(curr, edge)
-            inside_prev = edge_inside(prev, edge)
-            if inside_curr:
-                if not inside_prev:
-                    inter = compute_intersection(prev, curr, edge)
-                    if inter is not None:
-                        clipped.append(inter)
-                clipped.append(curr)
-            elif inside_prev:
-                inter = compute_intersection(prev, curr, edge)
-                if inter is not None:
-                    clipped.append(inter)
-        return clipped
-
-    def edge_inside(pt, edge):
-        x, y = pt
-        if edge == 'left':
-            return x >= wmin[0]
-        if edge == 'right':
-            return x <= wmax[0]
-        if edge == 'bottom':
-            return y >= wmin[1]
-        if edge == 'top':
-            return y <= wmax[1]
-
-    def compute_intersection(p1, p2, edge):
+    def liang_barsky(self, p1, p2, wmin, wmax):
         x1, y1 = p1
         x2, y2 = p2
         dx = x2 - x1
         dy = y2 - y1
-        if dx == 0 and dy == 0:
+        p = [-dx, dx, -dy, dy]
+        q = [x1 - wmin[0], wmax[0] - x1, y1 - wmin[1], wmax[1] - y1]
+        u1, u2 = 0.0, 1.0
+
+        for i in range(4):
+            if p[i] == 0:
+                if q[i] < 0:
+                    return []
+            else:
+                t = q[i] / p[i]
+                if p[i] < 0:
+                    u1 = max(u1, t)
+                else:
+                    u2 = min(u2, t)
+        
+        if u1 > u2:
+            return []
+
+        clipped_p1 = (x1 + u1 * dx, y1 + u1 * dy)
+        clipped_p2 = (x1 + u2 * dx, y1 + u2 * dy)
+        return [clipped_p1, clipped_p2]
+
+    def sutherland_hodgman(self, vertices, wmin, wmax):
+        def clip_contra_aresta(verts, aresta):
+            novos_verts = []
+            for i in range(len(verts)):
+                p1 = verts[i]
+                p2 = verts[(i + 1) % len(verts)]
+
+                inside1 = esta_dentro(p1, aresta)
+                inside2 = esta_dentro(p2, aresta)
+
+                if inside1 and inside2:
+                    novos_verts.append(p2)
+                elif inside1 and not inside2:
+                    novos_verts.append(intersecao(p1, p2, aresta))
+                elif not inside1 and inside2:
+                    novos_verts.append(intersecao(p1, p2, aresta))
+                    novos_verts.append(p2)
+            return novos_verts
+
+        def esta_dentro(p, aresta):
+            if aresta == 'left': return p[0] >= wmin[0]
+            if aresta == 'right': return p[0] <= wmax[0]
+            if aresta == 'bottom': return p[1] >= wmin[1]
+            if aresta == 'top': return p[1] <= wmax[1]
+        
+        def intersecao(p1, p2, aresta):
+            x1, y1 = p1
+            x2, y2 = p2
+            dx, dy = x2 - x1, y2 - y1
+
+            if aresta == 'left':
+                y = y1 + dy * (wmin[0] - x1) / dx if dx != 0 else y1
+                return (wmin[0], y)
+            if aresta == 'right':
+                y = y1 + dy * (wmax[0] - x1) / dx if dx != 0 else y1
+                return (wmax[0], y)
+            if aresta == 'bottom':
+                x = x1 + dx * (wmin[1] - y1) / dy if dy != 0 else x1
+                return (x, wmin[1])
+            if aresta == 'top':
+                x = x1 + dx * (wmax[1] - y1) / dy if dy != 0 else x1
+                return (x, wmax[1])
+        
+        clipped_vertices = vertices
+        for aresta in ['left', 'right', 'bottom', 'top']:
+            clipped_vertices = clip_contra_aresta(clipped_vertices, aresta)
+        return clipped_vertices
+
+
+    def clip(self, obj, wmin, wmax, alg_reta):
+        coords_clipadas = []
+        if obj.tipo == TipoObjeto.PONTO.value:
+            x, y = obj.coords[0]
+            if wmin[0] <= x <= wmax[0] and wmin[1] <= y <= wmax[1]:
+                coords_clipadas = obj.coords
+        
+        elif obj.tipo == TipoObjeto.RETA.value:
+            if alg_reta == 'cs':
+                coords_clipadas = self.cohen_sutherland(obj.coords[0], obj.coords[1], wmin, wmax)
+            else: # liang-barsky
+                coords_clipadas = self.liang_barsky(obj.coords[0], obj.coords[1], wmin, wmax)
+        
+        elif obj.tipo == TipoObjeto.POLIGONO.value:
+            coords_clipadas = self.sutherland_hodgman(obj.coords, wmin, wmax)
+
+        if not coords_clipadas:
             return None
-        if edge == 'left':
-            x = wmin[0]
-            if dx == 0:
-                return None
-            t = (x - x1) / dx
-            y = y1 + t * dy
-            return (x, y)
-        if edge == 'right':
-            x = wmax[0]
-            if dx == 0:
-                return None
-            t = (x - x1) / dx
-            y = y1 + t * dy
-            return (x, y)
-        if edge == 'bottom':
-            y = wmin[1]
-            if dy == 0:
-                return None
-            t = (y - y1) / dy
-            x = x1 + t * dx
-            return (x, y)
-        if edge == 'top':
-            y = wmax[1]
-            if dy == 0:
-                return None
-            t = (y - y1) / dy
-            x = x1 + t * dx
-            return (x, y)
 
-    output = polygon[:]
-    for edge in ['left', 'right', 'bottom', 'top']:
-        output = clip_edge(output, edge)
-        if not output:
-            break
-    return output
+        return Objeto(obj.nome, obj.tipo, coords_clipadas, obj.cor, obj.preenchido)
 
-
-# =========================
-# Viewport com clipping
-# =========================
 
 class Viewport:
-    def __init__(self, canvas, wmin, wmax, inset=20):
+    def __init__(self, canvas, wmin, wmax):
         self.canvas = canvas
         self.wmin = wmin
         self.wmax = wmax
         self.window_angle = 0.0
-        self.inset = inset  # margem interna em pixels para desenhar a viewport menor que o canvas
-
-        # default algorithm for line clipping
-        self.line_clip_method = 'cohen'  # 'cohen' or 'liang'
-
+        self.clipping = Clipping()
+        
     def set_window_angle(self, ang_deg):
         self.window_angle = ang_deg
-
-    def set_line_clip_method(self, method: str):
-        if method in ('cohen', 'liang'):
-            self.line_clip_method = method
 
     def _rotacionar_ponto_em_torno_de(self, x, y, cx, cy, ang_rad):
         tx = x - cx
@@ -346,153 +273,91 @@ class Viewport:
         yr = s * tx + c * ty
         return (xr + cx, yr + cy)
 
-    def transformar(self, xw, yw, w_adj_min, w_adj_max, vpmin, vpmax):
-        xw_range = w_adj_max[0] - w_adj_min[0]
-        yw_range = w_adj_max[1] - w_adj_min[1]
-
+    def transformar(self, xw, yw, w_min, w_max, vpmin, vpmax):
+        xw_range = w_max[0] - w_min[0]
+        yw_range = w_max[1] - w_min[1]
         xvp_range = vpmax[0] - vpmin[0]
         yvp_range = vpmax[1] - vpmin[1]
 
-        if xw_range == 0 or yw_range == 0:
-            return (0, 0)
+        if xw_range == 0 or yw_range == 0: return (0, 0)
 
-        xvp = vpmin[0] + ((xw - w_adj_min[0]) / xw_range) * xvp_range
-        yvp = vpmin[1] + (1 - (yw - w_adj_min[1]) / yw_range) * yvp_range
-
+        xvp = vpmin[0] + ((xw - w_min[0]) / xw_range) * xvp_range
+        yvp = vpmin[1] + (1 - (yw - w_min[1]) / yw_range) * yvp_range
         return (xvp, yvp)
 
-    def desenhar(self, displayfile: DisplayFile):
+    def desenhar(self, displayfile: DisplayFile, alg_reta_clip: str):
         self.canvas.delete("all")
 
-        vp_width = self.canvas.winfo_width()
-        vp_height = self.canvas.winfo_height()
-        if vp_width == 0 or vp_height == 0:
-            return
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        
+        canvas_margin = 10
 
-        # vpmin/vpmax com margem interna para deixar viewport menor que canvas
-        margin = self.inset
-        vpmin = (margin, margin)
-        vpmax = (vp_width - margin, vp_height - margin)
+        if canvas_width <= (2 * canvas_margin) or canvas_height <= (2 * canvas_margin): return
 
-        # desenhar moldura da viewport para visualização
-        self.canvas.create_rectangle(vpmin[0]-1, vpmin[1]-1, vpmax[0]+1, vpmax[1]+1, outline='black', width=1)
+        available_width = canvas_width - (2 * canvas_margin)
+        available_height = canvas_height - (2 * canvas_margin)
 
-        vp_aspect = (vpmax[0] - vpmin[0]) / (vpmax[1] - vpmin[1])
         w_width = self.wmax[0] - self.wmin[0]
         w_height = self.wmax[1] - self.wmin[1]
-        w_aspect = w_width / w_height if w_height != 0 else 1
+        
+        w_aspect = w_width / w_height if w_height != 0 else 1.0
+        available_aspect = available_width / available_height
 
-        w_adj_min = list(self.wmin)
-        w_adj_max = list(self.wmax)
+        if available_aspect > w_aspect:
+            vp_height = available_height
+            vp_width = vp_height * w_aspect
+            offset_x = canvas_margin + (available_width - vp_width) / 2
+            offset_y = canvas_margin
+        else:
+            vp_width = available_width
+            vp_height = vp_width / w_aspect
+            offset_x = canvas_margin
+            offset_y = canvas_margin + (available_height - vp_height) / 2
 
-        if w_aspect < vp_aspect:
-            new_width = w_height * vp_aspect
-            delta_w = new_width - w_width
-            w_adj_min[0] -= delta_w / 2
-            w_adj_max[0] += delta_w / 2
-        elif w_aspect > vp_aspect:
-            new_height = w_width / vp_aspect
-            delta_h = new_height - w_height
-            w_adj_min[1] -= delta_h / 2
-            w_adj_max[1] += delta_h / 2
-
-        w_adj_min = tuple(w_adj_min)
-        w_adj_max = tuple(w_adj_max)
-
-        # centro da window no sistema world coordinates
-        cx = (w_adj_min[0] + w_adj_max[0]) / 2.0
-        cy = (w_adj_min[1] + w_adj_max[1]) / 2.0
-
-        # ângulo a aplicar ao mundo = -window_angle (em radianos)
+        vpmin = (offset_x, offset_y)
+        vpmax = (offset_x + vp_width, offset_y + vp_height)
+        
+        self.canvas.create_rectangle(vpmin[0], vpmin[1], vpmax[0], vpmax[1], outline="blue", dash=(4, 4))
+        
+        cx = (self.wmin[0] + self.wmax[0]) / 2.0
+        cy = (self.wmin[1] + self.wmax[1]) / 2.0
         ang_rad = -np.deg2rad(self.window_angle)
 
-        # função auxiliar: rotaciona mundo em torno do centro da window e retorna coordenada resultante
-        def rotate_world(xw, yw):
-            return self._rotacionar_ponto_em_torno_de(xw, yw, cx, cy, ang_rad)
+        def transform_coord(xw, yw):
+            xr, yr = self._rotacionar_ponto_em_torno_de(xw, yw, cx, cy, ang_rad)
+            return self.transformar(xr, yr, self.wmin, self.wmax, vpmin, vpmax)
 
-        # função de transformação final world -> viewport (após rotação)
-        def world_to_vp(xw, yw):
-            return self.transformar(xw, yw, w_adj_min, w_adj_max, vpmin, vpmax)
+        origem_vp = transform_coord(0, 0)
+        p_inicio_eixo_x = transform_coord(self.wmin[0], 0)
+        p_fim_eixo_x = transform_coord(self.wmax[0], 0)
+        p_inicio_eixo_y = transform_coord(0, self.wmin[1])
+        p_fim_eixo_y = transform_coord(0, self.wmax[1])
+        
+        self.canvas.create_line(p_inicio_eixo_x[0], origem_vp[1], p_fim_eixo_x[0], origem_vp[1], fill="gray", dash=(2, 2))
+        self.canvas.create_line(origem_vp[0], p_inicio_eixo_y[1], origem_vp[0], p_fim_eixo_y[1], fill="gray", dash=(2, 2))
 
-        # desenha eixos (após rotação)
-        origem = world_to_vp(*rotate_world(0, 0))
-        x_axis_start = world_to_vp(*rotate_world(w_adj_min[0], 0))
-        x_axis_end = world_to_vp(*rotate_world(w_adj_max[0], 0))
-        y_axis_start = world_to_vp(*rotate_world(0, w_adj_min[1]))
-        y_axis_end = world_to_vp(*rotate_world(0, w_adj_max[1]))
-
-        self.canvas.create_line(
-            x_axis_start[0],
-            origem[1],
-            x_axis_end[0],
-            origem[1],
-            fill="gray",
-            dash=(2, 2),
-        )
-        self.canvas.create_line(
-            origem[0],
-            y_axis_start[1],
-            origem[0],
-            y_axis_end[1],
-            fill="gray",
-            dash=(2, 2),
-        )
-
-        # Para clipping: vamos trabalhar em coordenadas rotacionadas do mundo (alinhadas à window)
-        # w_adj_min/w_adj_max representam o retângulo axis-aligned após ajuste de aspect ratio.
         for obj in displayfile.listar():
-            # rotaciona cada ponto do objeto para o sistema alinhado à window
-            rotated_coords = [rotate_world(x, y) for (x, y) in obj.coords]
+            obj_clipado = self.clipping.clip(obj, self.wmin, self.wmax, alg_reta_clip)
 
-            # agora aplica clipping no retângulo w_adj_min -> w_adj_max (que é axis-aligned agora)
-            if obj.tipo == TipoObjeto.PONTO.value:
-                px, py = rotated_coords[0]
-                if point_in_window(px, py, w_adj_min, w_adj_max):
-                    xvp, yvp = world_to_vp(px, py)
-                    self.canvas.create_oval(xvp - 2, yvp - 2, xvp + 2, yvp + 2, fill=obj.cor)
+            if not obj_clipado:
+                continue
 
-            elif obj.tipo == TipoObjeto.RETA.value:
-                if len(rotated_coords) < 2:
-                    continue
-                p1 = rotated_coords[0]
-                p2 = rotated_coords[1]
-                clipped = None
-                if self.line_clip_method == 'cohen':
-                    clipped = cohen_sutherland_clip(p1, p2, w_adj_min, w_adj_max)
-                else:
-                    clipped = liang_barsky_clip(p1, p2, w_adj_min, w_adj_max)
+            coords_vp = [transform_coord(x, y) for (x, y) in obj_clipado.coords]
 
-                if clipped:
-                    (cx1, cy1), (cx2, cy2) = clipped
-                    vp_p1 = world_to_vp(cx1, cy1)
-                    vp_p2 = world_to_vp(cx2, cy2)
-                    self.canvas.create_line(vp_p1[0], vp_p1[1], vp_p2[0], vp_p2[1], fill=obj.cor, width=2)
-
-            elif obj.tipo == TipoObjeto.WIREFRAME.value:
-                # polígonos: aplicar Sutherland-Hodgman no conjunto de vértices rotacionados
-                if len(rotated_coords) < 2:
-                    continue
-                clipped_poly = sutherland_hodgman_clip(rotated_coords, w_adj_min, w_adj_max)
-                if not clipped_poly:
-                    continue
-                # transformar para viewport
-                coords_vp = [world_to_vp(x, y) for x, y in clipped_poly]
-                flat = [coord for p in coords_vp for coord in p]
-                if obj.preenchido:
-                    # create_polygon preenche por default; outline também definido
-                    self.canvas.create_polygon(*flat, fill=obj.cor, outline='black')
-                else:
-                    # wireframe: desenhar arestas
-                    if len(coords_vp) == 1:
-                        x, y = coords_vp[0]
-                        self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=obj.cor)
+            if obj_clipado.tipo == TipoObjeto.PONTO.value:
+                x, y = coords_vp[0]
+                self.canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=obj_clipado.cor, outline=obj_clipado.cor)
+            elif obj_clipado.tipo == TipoObjeto.RETA.value:
+                flat = [c for p in coords_vp for c in p]
+                if len(flat) >= 4:
+                    self.canvas.create_line(*flat, fill=obj_clipado.cor, width=2)
+            elif obj_clipado.tipo == TipoObjeto.POLIGONO.value:
+                if len(coords_vp) > 1:
+                    if obj_clipado.preenchido:
+                        self.canvas.create_polygon(coords_vp, fill=obj_clipado.cor, outline="")
                     else:
-                        for i in range(len(coords_vp)):
-                            p1 = coords_vp[i]
-                            p2 = coords_vp[(i + 1) % len(coords_vp)]
-                            self.canvas.create_line(p1[0], p1[1], p2[0], p2[1], fill=obj.cor, width=2)
-
-
+                        self.canvas.create_polygon(coords_vp, fill="", outline=obj_clipado.cor, width=2)
 class App(tk.Frame):
     def __init__(self, master):
         super().__init__(master)
@@ -500,7 +365,8 @@ class App(tk.Frame):
 
         self.selected_obj_name = None
         self.transformacoes = Transformacoes()
-
+        self.displayfile = DisplayFile()
+        
         frame_main = tk.Frame(self)
         frame_main.pack(fill="both", expand=True)
 
@@ -509,183 +375,103 @@ class App(tk.Frame):
 
         self.canvas = tk.Canvas(frame_main, bg="white")
         self.canvas.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.viewport = Viewport(self.canvas, wmin=(-100, -100), wmax=(100, 100))
 
         self.lista_objetos = tk.Listbox(frame_main, width=30)
         self.lista_objetos.grid(row=0, column=1, sticky="ns", padx=5, pady=5)
         self.lista_objetos.bind("<<ListboxSelect>>", self.on_obj_select)
-        self.lista_objetos.bind("<Button-3>", self.on_right_click_listbox)
 
+        # --- PAINEL DE CONTROLES ---
         control_frame = tk.Frame(self)
         control_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Botões de objetos e transformações
+        tk.Button(control_frame, text="Adicionar Objeto", command=self.abrir_popup_objetos).pack(side="left", padx=2)
+        tk.Button(control_frame, text="Aplicar Transformação", command=self.abrir_transformacoes_popup).pack(side="left", padx=2)
+        
+        # Navegação (Pan, Zoom, Rotação)
+        tk.Label(control_frame, text="  Navegação:").pack(side="left", padx=(10,0))
+        tk.Button(control_frame, text="←", command=lambda: self.pan(10, 0)).pack(side="left")
+        tk.Button(control_frame, text="→", command=lambda: self.pan(-10, 0)).pack(side="left")
+        tk.Button(control_frame, text="↑", command=lambda: self.pan(0, -10)).pack(side="left")
+        tk.Button(control_frame, text="↓", command=lambda: self.pan(0, 10)).pack(side="left")
+        tk.Button(control_frame, text="Zoom +", command=lambda: self.zoom(0.9)).pack(side="left", padx=(5, 2))
+        tk.Button(control_frame, text="Zoom -", command=lambda: self.zoom(1.1)).pack(side="left")
+        tk.Button(control_frame, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5, 2))
 
-        self.displayfile = DisplayFile()
-        self.viewport = Viewport(self.canvas, wmin=(-100, -100), wmax=(100, 100), inset=24)
-
-        # opções de clipagem (rádio)
-        clip_frame = tk.Frame(control_frame)
-        clip_frame.pack(side='left', padx=(0,10))
-        tk.Label(clip_frame, text="Clipagem de retas:").pack(anchor='w')
-        self.clip_var = tk.StringVar(value='cohen')
-        r1 = tk.Radiobutton(clip_frame, text="Cohen-Sutherland", variable=self.clip_var, value='cohen', command=self.on_clip_method_change)
-        r2 = tk.Radiobutton(clip_frame, text="Liang-Barsky", variable=self.clip_var, value='liang', command=self.on_clip_method_change)
-        r1.pack(anchor='w')
-        r2.pack(anchor='w')
-
-        tk.Button(
-            control_frame, text="Adicionar Objeto", command=self.abrir_popup
-        ).pack(side="left", padx=2)
-        tk.Button(
-            control_frame,
-            text="Aplicar Transformação",
-            command=self.abrir_transformacoes_popup,
-        ).pack(side="left", padx=2)
-
-        tk.Button(control_frame, text="←", command=lambda: self.pan(10, 0)).pack(
-            side="left"
-        )
-        tk.Button(control_frame, text="→", command=lambda: self.pan(-10, 0)).pack(
-            side="left"
-        )
-        tk.Button(control_frame, text="↑", command=lambda: self.pan(0, -10)).pack(
-            side="left"
-        )
-        tk.Button(control_frame, text="↓", command=lambda: self.pan(0, 10)).pack(
-            side="left"
-        )
-        tk.Button(control_frame, text="Zoom +", command=lambda: self.zoom(0.9)).pack(
-            side="left", padx=(10, 2)
-        )
-        tk.Button(control_frame, text="Zoom -", command=lambda: self.zoom(1.1)).pack(
-            side="left"
-        )
-        tk.Button(
-            control_frame,
-            text="Rotacionar Window",
-            command=self.popup_rotacionar_window,
-        ).pack(side="left", padx=(10, 2))
+        # --- PAINEL DE CLIPPING ---
+        clipping_frame = tk.Frame(control_frame, borderwidth=1, relief="groove")
+        clipping_frame.pack(side="left", padx=(10,0))
+        tk.Label(clipping_frame, text=" Algoritmo de Clipping de Reta: ").pack(side="left")
+        self.alg_reta_clip_var = tk.StringVar(value="cs")
+        tk.Radiobutton(clipping_frame, text="Cohen-Sutherland", variable=self.alg_reta_clip_var, value="cs", command=self.redesenhar).pack(side="left")
+        tk.Radiobutton(clipping_frame, text="Liang-Barsky", variable=self.alg_reta_clip_var, value="lb", command=self.redesenhar).pack(side="left")
 
         self.canvas.bind("<Configure>", self.on_canvas_resize)
-
         self.selected_color = "black"
 
-    def on_clip_method_change(self):
-        method = self.clip_var.get()
-        self.viewport.set_line_clip_method(method)
-        self.viewport.desenhar(self.displayfile)
+    def redesenhar(self):
+        self.viewport.desenhar(self.displayfile, self.alg_reta_clip_var.get())
 
     def popup_rotacionar_window(self):
         popup = tk.Toplevel(self)
         popup.title("Rotacionar Window")
-        tk.Label(popup, text="Ângulo (graus, sentido anti-horário):").pack(
-            padx=8, pady=(8, 0)
-        )
+        tk.Label(popup, text="Ângulo (graus, anti-horário):").pack(padx=8, pady=(8,0))
         ang_entry = tk.Entry(popup)
         ang_entry.pack(padx=8, pady=4)
         ang_entry.insert(0, str(self.viewport.window_angle))
 
         def aplicar():
             try:
-                ang = float(ang_entry.get())
-                self.viewport.set_window_angle(ang)
-                self.viewport.desenhar(self.displayfile)
+                self.viewport.set_window_angle(float(ang_entry.get()))
+                self.redesenhar()
                 popup.destroy()
             except Exception as e:
-                messagebox.showerror("Erro", f"Valor de ângulo inválido: {e}")
-
+                messagebox.showerror("Erro", f"Ângulo inválido: {e}")
         tk.Button(popup, text="Aplicar", command=aplicar).pack(pady=8)
 
     def on_canvas_resize(self, event):
-        self.viewport.desenhar(self.displayfile)
+        self.redesenhar()
 
     def on_obj_select(self, event):
         selecao = self.lista_objetos.curselection()
         if selecao:
             entry = self.lista_objetos.get(selecao[0])
-            if " (" in entry:
-                nome = entry.rsplit(" (", 1)[0]
-            else:
-                nome = entry
-            self.selected_obj_name = nome
+            self.selected_obj_name = entry.rsplit(" (", 1)[0] if " (" in entry else entry
         else:
             self.selected_obj_name = None
 
-    def on_right_click_listbox(self, event):
-        index = self.lista_objetos.nearest(event.y)
-
-        if index is not None:
-            self.lista_objetos.selection_clear(0, tk.END)
-            self.lista_objetos.selection_set(index)
-            self.lista_objetos.activate(index)
-
-            self.on_obj_select(event)
-
-            self.show_context_menu(event.x, event.y)
-
-    def show_context_menu(self, x, y):
-        menu = tk.Menu(self.master, tearoff=0)
-        menu.add_command(
-            label="Transformar Objeto", command=self.abrir_transformacoes_popup
-        )
-        menu.post(
-            self.lista_objetos.winfo_rootx() + x, self.lista_objetos.winfo_rooty() + y
-        )
-
-    # ==============================
-    # POPUP DE INSERÇÃO DE OBJETOS
-    # ==============================
-    def abrir_popup(self):
+    def abrir_popup_objetos(self):
         popup = tk.Toplevel(self)
         popup.title("Incluir Objeto")
-        popup.geometry("360x360")
+        popup.geometry("300x320")
 
         frame_cor = tk.Frame(popup, pady=5)
         frame_cor.pack(fill="x", padx=10)
-        tk.Label(frame_cor, text="Cor do Objeto:").pack(side="left")
-
-        color_button = tk.Button(
-            frame_cor, text="Escolher Cor", command=self.escolher_cor
-        )
-        color_button.pack(side="left", padx=5)
-
-        self.cor_preview = tk.Canvas(
-            frame_cor, width=20, height=20, bg="black", borderwidth=1, relief="solid"
-        )
-        self.cor_preview.pack(side="left")
+        tk.Label(frame_cor, text="Cor:").pack(side="left")
+        self.cor_preview = tk.Canvas(frame_cor, width=20, height=20, bg="black", relief="solid")
+        self.cor_preview.pack(side="left", padx=5)
+        tk.Button(frame_cor, text="Escolher Cor", command=self.escolher_cor).pack(side="left")
 
         notebook = ttk.Notebook(popup)
         notebook.pack(expand=True, fill="both", padx=10, pady=5)
 
+        # Aba Ponto
         frame_ponto = ttk.Frame(notebook)
         notebook.add(frame_ponto, text="Ponto")
-        nome_ponto = tk.Entry(frame_ponto)
-        x_ponto = tk.Entry(frame_ponto)
-        y_ponto = tk.Entry(frame_ponto)
+        nome_ponto, x_ponto, y_ponto = tk.Entry(frame_ponto), tk.Entry(frame_ponto), tk.Entry(frame_ponto)
         tk.Label(frame_ponto, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
         nome_ponto.grid(row=0, column=1)
         tk.Label(frame_ponto, text="x:").grid(row=1, column=0, sticky="w", pady=2)
         x_ponto.grid(row=1, column=1)
         tk.Label(frame_ponto, text="y:").grid(row=2, column=0, sticky="w", pady=2)
         y_ponto.grid(row=2, column=1)
-        tk.Button(
-            frame_ponto,
-            text="Adicionar",
-            command=lambda: self.add_obj(
-                nome_ponto.get(),
-                TipoObjeto.PONTO.value,
-                [(float(x_ponto.get()), float(y_ponto.get()))],
-                popup,
-                self.selected_color,
-                preenchido=False,
-            ),
-        ).grid(row=3, columnspan=2, pady=10)
+        tk.Button(frame_ponto, text="Adicionar", command=lambda: self.add_obj(nome_ponto.get(), TipoObjeto.PONTO.value, [(float(x_ponto.get()), float(y_ponto.get()))], popup, self.selected_color)).grid(row=3, columnspan=2, pady=10)
 
+        # Aba Reta
         frame_reta = ttk.Frame(notebook)
         notebook.add(frame_reta, text="Reta")
-        nome_reta = tk.Entry(frame_reta)
-        x1 = tk.Entry(frame_reta)
-        y1 = tk.Entry(frame_reta)
-        x2 = tk.Entry(frame_reta)
-        y2 = tk.Entry(frame_reta)
+        nome_reta, x1, y1, x2, y2 = tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta), tk.Entry(frame_reta)
         tk.Label(frame_reta, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
         nome_reta.grid(row=0, column=1)
         tk.Label(frame_reta, text="x1:").grid(row=1, column=0, sticky="w", pady=2)
@@ -696,49 +482,21 @@ class App(tk.Frame):
         x2.grid(row=3, column=1)
         tk.Label(frame_reta, text="y2:").grid(row=4, column=0, sticky="w", pady=2)
         y2.grid(row=4, column=1)
-        tk.Button(
-            frame_reta,
-            text="Adicionar",
-            command=lambda: self.add_obj(
-                nome_reta.get(),
-                TipoObjeto.RETA.value,
-                [
-                    (float(x1.get()), float(y1.get())),
-                    (float(x2.get()), float(y2.get())),
-                ],
-                popup,
-                self.selected_color,
-                preenchido=False,
-            ),
-        ).grid(row=5, columnspan=2, pady=10)
+        tk.Button(frame_reta, text="Adicionar", command=lambda: self.add_obj(nome_reta.get(), TipoObjeto.RETA.value, [(float(x1.get()), float(y1.get())), (float(x2.get()), float(y2.get()))], popup, self.selected_color)).grid(row=5, columnspan=2, pady=10)
 
-        frame_wire = ttk.Frame(notebook)
-        notebook.add(frame_wire, text="Wireframe / Polígono")
-        nome_wire = tk.Entry(frame_wire)
-        coords_entry = tk.Entry(frame_wire, width=40)
-        preenchido_var = tk.BooleanVar(value=False)
-        tk.Label(frame_wire, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
-        nome_wire.grid(row=0, column=1, sticky="ew")
-        tk.Label(frame_wire, text="Coordenadas:").grid(
-            row=1, column=0, columnspan=2, sticky="w"
-        )
+        # Aba Polígono
+        frame_poli = ttk.Frame(notebook)
+        notebook.add(frame_poli, text="Polígono")
+        nome_poli = tk.Entry(frame_poli)
+        coords_entry = tk.Entry(frame_poli, width=30)
+        preenchido_var = tk.BooleanVar()
+        tk.Label(frame_poli, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
+        nome_poli.grid(row=0, column=1, sticky="ew")
+        tk.Label(frame_poli, text="Coordenadas:").grid(row=1, column=0, columnspan=2, sticky="w")
         coords_entry.grid(row=2, column=0, columnspan=2, pady=2, sticky="ew")
-        tk.Label(frame_wire, text="Formato: (x1,y1),(x2,y2),...").grid(
-            row=3, column=0, columnspan=2, sticky="w"
-        )
-        tk.Checkbutton(frame_wire, text="Preenchido (polígono)", variable=preenchido_var).grid(row=4, column=0, columnspan=2, sticky='w')
-        tk.Button(
-            frame_wire,
-            text="Adicionar",
-            command=lambda: self.add_obj(
-                nome_wire.get(),
-                TipoObjeto.WIREFRAME.value,
-                list(ast.literal_eval(coords_entry.get())),
-                popup,
-                self.selected_color,
-                preenchido=preenchido_var.get(),
-            ),
-        ).grid(row=5, columnspan=2, pady=10)
+        tk.Label(frame_poli, text="Formato: [(x1,y1),(x2,y2),...]").grid(row=3, column=0, columnspan=2, sticky="w")
+        tk.Checkbutton(frame_poli, text="Preenchido", variable=preenchido_var).grid(row=4, columnspan=2, pady=5)
+        tk.Button(frame_poli, text="Adicionar", command=lambda: self.add_obj(nome_poli.get(), TipoObjeto.POLIGONO.value, list(ast.literal_eval(coords_entry.get())), popup, self.selected_color, preenchido_var.get())).grid(row=5, columnspan=2, pady=10)
 
     def escolher_cor(self):
         cor_codigo = colorchooser.askcolor(title="Escolha uma cor")[1]
@@ -749,129 +507,65 @@ class App(tk.Frame):
     def add_obj(self, nome, tipo, coords, popup, cor, preenchido=False):
         try:
             coords_float = [(float(x), float(y)) for x, y in coords]
-            obj = Objeto(nome if nome else tipo, tipo, coords_float, cor, preenchido)
+            obj = Objeto(nome if nome else f"{tipo}_{len(self.displayfile.objetos)}", tipo, coords_float, cor, preenchido)
             self.displayfile.adicionar(obj)
-            self.viewport.desenhar(self.displayfile)
+            self.redesenhar()
             self.lista_objetos.insert(tk.END, f"{obj.nome} ({obj.tipo})")
             popup.destroy()
         except (ValueError, TypeError, SyntaxError) as e:
-            from tkinter import messagebox
+            messagebox.showerror("Erro de Entrada", f"Coordenadas inválidas. Verifique o formato.\n\nErro: {e}")
 
-            messagebox.showerror(
-                "Erro de Entrada",
-                f"Coordenadas inválidas. Por favor, verifique o formato.\n\nErro: {e}",
-            )
-
-    # ==============================
-    # POPUP DE TRANSFORMAÇÕES
-    # ==============================
     def abrir_transformacoes_popup(self):
         if not self.selected_obj_name:
-            from tkinter import messagebox
-
             messagebox.showerror("Erro", "Selecione um objeto para transformar.")
             return
 
         self.lista_objetos.unbind("<<ListboxSelect>>")
-
         popup = tk.Toplevel(self)
         popup.title(f"Transformar {self.selected_obj_name}")
-        popup.geometry("350x350")
-        popup.protocol(
-            "WM_DELETE_WINDOW", lambda: self.fechar_popup_transformacao(popup)
-        )
-
+        popup.geometry("350x300")
+        popup.protocol("WM_DELETE_WINDOW", lambda: self.fechar_popup_transformacao(popup))
         notebook = ttk.Notebook(popup)
         notebook.pack(expand=True, fill="both", padx=10, pady=10)
 
+        # Translação
         frame_t = ttk.Frame(notebook)
         notebook.add(frame_t, text="Translação")
+        dx_t, dy_t = tk.Entry(frame_t), tk.Entry(frame_t)
         tk.Label(frame_t, text="dx:").grid(row=0, column=0, sticky="w")
-        dx_t = tk.Entry(frame_t)
         dx_t.grid(row=0, column=1)
         tk.Label(frame_t, text="dy:").grid(row=1, column=0, sticky="w")
-        dy_t = tk.Entry(frame_t)
         dy_t.grid(row=1, column=1)
-        tk.Button(
-            frame_t,
-            text="Aplicar",
-            command=lambda: self.aplicar_transformacao(
-                "translacao",
-                dx=float(dx_t.get()) if dx_t.get() else 0.0,
-                dy=float(dy_t.get()) if dy_t.get() else 0.0,
-                popup=popup,
-            ),
-        ).grid(row=2, columnspan=2, pady=10)
+        tk.Button(frame_t, text="Aplicar", command=lambda: self.aplicar_transformacao("translacao", dx=float(dx_t.get() or 0), dy=float(dy_t.get() or 0), popup=popup)).grid(row=2, columnspan=2, pady=10)
 
+        # Escalonamento
         frame_s = ttk.Frame(notebook)
         notebook.add(frame_s, text="Escalonamento")
+        sx_s, sy_s = tk.Entry(frame_s), tk.Entry(frame_s)
         tk.Label(frame_s, text="sx:").grid(row=0, column=0, sticky="w")
-        sx_s = tk.Entry(frame_s)
         sx_s.grid(row=0, column=1)
         tk.Label(frame_s, text="sy:").grid(row=1, column=0, sticky="w")
-        sy_s = tk.Entry(frame_s)
         sy_s.grid(row=1, column=1)
-        tk.Button(
-            frame_s,
-            text="Aplicar",
-            command=lambda: self.aplicar_transformacao(
-                "escalonamento_natural",
-                sx=float(sx_s.get()) if sx_s.get() else 1.0,
-                sy=float(sy_s.get()) if sy_s.get() else 1.0,
-                popup=popup,
-            ),
-        ).grid(row=2, columnspan=2, pady=10)
+        tk.Button(frame_s, text="Aplicar", command=lambda: self.aplicar_transformacao("escalonamento_natural", sx=float(sx_s.get() or 1), sy=float(sy_s.get() or 1), popup=popup)).grid(row=2, columnspan=2, pady=10)
 
+        # Rotação
         frame_r = ttk.Frame(notebook)
         notebook.add(frame_r, text="Rotação")
-        rot_frame = tk.Frame(frame_r)
-        rot_frame.grid(row=0, column=0)
-
-        tk.Label(rot_frame, text="Ângulo (graus):").grid(row=0, column=0, sticky="w")
-        angulo_r = tk.Entry(rot_frame)
+        tk.Label(frame_r, text="Ângulo (graus):").grid(row=0, column=0, sticky="w")
+        angulo_r = tk.Entry(frame_r)
         angulo_r.grid(row=0, column=1)
-
         rot_var = tk.StringVar(value="centro_objeto")
-        tk.Radiobutton(
-            frame_r,
-            text="Em torno do centro do objeto",
-            variable=rot_var,
-            value="centro_objeto",
-        ).grid(row=1, sticky="w")
-        tk.Radiobutton(
-            frame_r,
-            text="Em torno do centro do mundo (0,0)",
-            variable=rot_var,
-            value="centro_mundo",
-        ).grid(row=2, sticky="w")
-
+        tk.Radiobutton(frame_r, text="Centro do objeto", variable=rot_var, value="centro_objeto").grid(row=1, sticky="w")
+        tk.Radiobutton(frame_r, text="Origem do mundo (0,0)", variable=rot_var, value="centro_mundo").grid(row=2, sticky="w")
         frame_arbitrario = tk.Frame(frame_r)
         frame_arbitrario.grid(row=3, sticky="w")
-        tk.Radiobutton(
-            frame_arbitrario,
-            text="Em torno de um ponto:",
-            variable=rot_var,
-            value="ponto_arbitrario",
-        ).pack(side="left")
-
-        x_r = tk.Entry(frame_arbitrario, width=5)
-        y_r = tk.Entry(frame_arbitrario, width=5)
-        tk.Label(frame_arbitrario, text="x:").pack(side="left", padx=(10, 0))
+        tk.Radiobutton(frame_arbitrario, text="Ponto:", variable=rot_var, value="ponto_arbitrario").pack(side="left")
+        x_r, y_r = tk.Entry(frame_arbitrario, width=5), tk.Entry(frame_arbitrario, width=5)
+        tk.Label(frame_arbitrario, text="x:").pack(side="left")
         x_r.pack(side="left")
-        tk.Label(frame_arbitrario, text="y:").pack(side="left", padx=(5, 0))
+        tk.Label(frame_arbitrario, text="y:").pack(side="left")
         y_r.pack(side="left")
-
-        tk.Button(
-            frame_r,
-            text="Aplicar",
-            command=lambda: self.aplicar_transformacao(
-                rot_var.get(),
-                angulo=float(angulo_r.get()) if angulo_r.get() else 0.0,
-                px=float(x_r.get()) if x_r.get() else 0.0,
-                py=float(y_r.get()) if y_r.get() else 0.0,
-                popup=popup,
-            ),
-        ).grid(row=4, columnspan=2, pady=10)
+        tk.Button(frame_r, text="Aplicar", command=lambda: self.aplicar_transformacao(rot_var.get(), angulo=float(angulo_r.get() or 0), px=float(x_r.get() or 0), py=float(y_r.get() or 0), popup=popup)).grid(row=4, columnspan=2, pady=10)
 
     def fechar_popup_transformacao(self, popup):
         self.lista_objetos.bind("<<ListboxSelect>>", self.on_obj_select)
@@ -879,74 +573,50 @@ class App(tk.Frame):
 
     def aplicar_transformacao(self, tipo_transf, **kwargs):
         obj = self.displayfile.get_by_name(self.selected_obj_name)
-        if not obj:
-            return
-
+        if not obj: return
         try:
             if tipo_transf == "translacao":
-                matriz = self.transformacoes.get_matriz_translacao(
-                    kwargs["dx"], kwargs["dy"]
-                )
+                matriz = self.transformacoes.get_matriz_translacao(kwargs["dx"], kwargs["dy"])
                 self.transformacoes.aplicar_transformacao_generica(obj, matriz)
             elif tipo_transf == "escalonamento_natural":
-                self.transformacoes.aplicar_escalonamento_natural(
-                    obj, kwargs["sx"], kwargs["sy"]
-                )
+                self.transformacoes.aplicar_escalonamento_natural(obj, kwargs["sx"], kwargs["sy"])
             elif tipo_transf == "centro_mundo":
-                angulo_rad = np.deg2rad(kwargs["angulo"])
-                matriz = self.transformacoes.get_matriz_rotacao(angulo_rad)
+                matriz = self.transformacoes.get_matriz_rotacao(np.deg2rad(kwargs["angulo"]))
                 self.transformacoes.aplicar_transformacao_generica(obj, matriz)
             elif tipo_transf == "centro_objeto":
-                angulo_rad = np.deg2rad(kwargs["angulo"])
-                self.transformacoes.aplicar_rotacao_centro_objeto(obj, angulo_rad)
+                self.transformacoes.aplicar_rotacao_centro_objeto(obj, np.deg2rad(kwargs["angulo"]))
             elif tipo_transf == "ponto_arbitrario":
-                angulo_rad = np.deg2rad(kwargs["angulo"])
-                self.transformacoes.aplicar_rotacao_ponto_arbitrario(
-                    obj, angulo_rad, kwargs["px"], kwargs["py"]
-                )
-
-            self.viewport.desenhar(self.displayfile)
-            if "popup" in kwargs:
-                self.fechar_popup_transformacao(kwargs["popup"])
-
+                self.transformacoes.aplicar_rotacao_ponto_arbitrario(obj, np.deg2rad(kwargs["angulo"]), kwargs["px"], kwargs["py"])
+            
+            self.redesenhar()
+            if "popup" in kwargs: self.fechar_popup_transformacao(kwargs["popup"])
         except (ValueError, TypeError) as e:
-            from tkinter import messagebox
-
-            messagebox.showerror(
-                "Erro de Entrada",
-                f"Entrada inválida. Verifique os valores numéricos.\n\nErro: {e}",
-            )
+            messagebox.showerror("Erro de Entrada", f"Entrada inválida. Verifique os valores.\n\nErro: {e}")
 
     def pan(self, dx, dy):
         theta = np.deg2rad(self.viewport.window_angle)
-        c = np.cos(theta)
-        s = np.sin(theta)
-        world_dx = dx * c - dy * s
-        world_dy = dx * s + dy * c
-
-        self.viewport.wmin = (
-            self.viewport.wmin[0] + world_dx,
-            self.viewport.wmin[1] + world_dy,
-        )
-        self.viewport.wmax = (
-            self.viewport.wmax[0] + world_dx,
-            self.viewport.wmax[1] + world_dy,
-        )
-        self.viewport.desenhar(self.displayfile)
+        c, s = np.cos(theta), np.sin(theta)
+        world_dx, world_dy = dx * c - dy * s, dx * s + dy * c
+        self.viewport.wmin = (self.viewport.wmin[0] + world_dx, self.viewport.wmin[1] + world_dy)
+        self.viewport.wmax = (self.viewport.wmax[0] + world_dx, self.viewport.wmax[1] + world_dy)
+        self.redesenhar()
 
     def zoom(self, fator):
         cx = (self.viewport.wmin[0] + self.viewport.wmax[0]) / 2
         cy = (self.viewport.wmin[1] + self.viewport.wmax[1]) / 2
         largura = (self.viewport.wmax[0] - self.viewport.wmin[0]) * fator
-        altura = (self.viewport.wmax[1] - self.viewport.wmin[1]) * fator
+        altura = (self.viewport.wmax[1] - self.viewport.wmax[1]) * fator
         self.viewport.wmin = (cx - largura / 2, cy - altura / 2)
         self.viewport.wmax = (cx + largura / 2, cy + altura / 2)
-        self.viewport.desenhar(self.displayfile)
+        self.redesenhar()
 
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Sistema Básico de CG 2D - clipping integrado")
-    root.geometry("900x650")
+    root.title("SGI 2D - Clipping (Tamanho Fixo)")
+    root.geometry("1000x700")
+    
+    root.resizable(False, False)
+    
     app = App(root)
     app.mainloop()
