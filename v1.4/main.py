@@ -101,12 +101,11 @@ class DisplayFile:
         return None
 
 class Clipping:
-    # Constantes para Cohen-Sutherland
-    INSIDE = 0  # 0000
-    LEFT = 1    # 0001
-    RIGHT = 2   # 0010
-    BOTTOM = 4  # 0100
-    TOP = 8     # 1000
+    INSIDE = 0
+    LEFT = 1
+    RIGHT = 2
+    BOTTOM = 4
+    TOP = 8
 
     def _get_outcode(self, x, y, wmin, wmax):
         code = self.INSIDE
@@ -127,9 +126,9 @@ class Clipping:
         outcode2 = self._get_outcode(x2, y2, wmin, wmax)
         
         while True:
-            if not (outcode1 | outcode2): # Aceite trivial
+            if not (outcode1 | outcode2):
                 return [(x1, y1), (x2, y2)]
-            elif outcode1 & outcode2: # Rejeite trivial
+            elif outcode1 & outcode2:
                 return []
             else:
                 x, y = 0, 0
@@ -241,7 +240,7 @@ class Clipping:
         elif obj.tipo == TipoObjeto.RETA.value:
             if alg_reta == 'cs':
                 coords_clipadas = self.cohen_sutherland(obj.coords[0], obj.coords[1], wmin, wmax)
-            else: # liang-barsky
+            else:
                 coords_clipadas = self.liang_barsky(obj.coords[0], obj.coords[1], wmin, wmax)
         
         elif obj.tipo == TipoObjeto.POLIGONO.value:
@@ -358,6 +357,8 @@ class Viewport:
                         self.canvas.create_polygon(coords_vp, fill=obj_clipado.cor, outline="")
                     else:
                         self.canvas.create_polygon(coords_vp, fill="", outline=obj_clipado.cor, width=2)
+
+
 class App(tk.Frame):
     def __init__(self, master):
         super().__init__(master)
@@ -372,6 +373,7 @@ class App(tk.Frame):
 
         frame_main.grid_columnconfigure(0, weight=1)
         frame_main.grid_columnconfigure(1, weight=0)
+        frame_main.grid_rowconfigure(0, weight=1)
 
         self.canvas = tk.Canvas(frame_main, bg="white")
         self.canvas.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
@@ -381,27 +383,37 @@ class App(tk.Frame):
         self.lista_objetos.grid(row=0, column=1, sticky="ns", padx=5, pady=5)
         self.lista_objetos.bind("<<ListboxSelect>>", self.on_obj_select)
 
-        control_frame = tk.Frame(self)
-        control_frame.pack(fill="x", padx=5, pady=5)
-        
-        tk.Button(control_frame, text="Adicionar Objeto", command=self.abrir_popup_objetos).pack(side="left", padx=2)
-        tk.Button(control_frame, text="Aplicar Transformação", command=self.abrir_transformacoes_popup).pack(side="left", padx=2)
-        
-        tk.Label(control_frame, text="  Navegação:").pack(side="left", padx=(10,0))
-        tk.Button(control_frame, text="←", command=lambda: self.pan(10, 0)).pack(side="left")
-        tk.Button(control_frame, text="→", command=lambda: self.pan(-10, 0)).pack(side="left")
-        tk.Button(control_frame, text="↑", command=lambda: self.pan(0, -10)).pack(side="left")
-        tk.Button(control_frame, text="↓", command=lambda: self.pan(0, 10)).pack(side="left")
-        tk.Button(control_frame, text="Zoom +", command=lambda: self.zoom(0.9)).pack(side="left", padx=(5, 2))
-        tk.Button(control_frame, text="Zoom -", command=lambda: self.zoom(1.1)).pack(side="left")
-        tk.Button(control_frame, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5, 2))
+        # --- PAINEL DE CONTROLES REESTRUTURADO ---
+        main_controls_container = tk.Frame(self)
+        main_controls_container.pack(fill="x", padx=5, pady=(0, 5))
 
-        clipping_frame = tk.Frame(control_frame, borderwidth=1, relief="groove")
-        clipping_frame.pack(side="left", padx=(10,0))
-        tk.Label(clipping_frame, text=" Algoritmo de Clipping de Reta: ").pack(side="left")
+        top_row_frame = tk.Frame(main_controls_container)
+        top_row_frame.pack(fill="x")
+
+        bottom_row_frame = tk.Frame(main_controls_container)
+        bottom_row_frame.pack(fill="x", pady=(5,0))
+
+        # --- Fileira Superior ---
+        tk.Button(top_row_frame, text="Adicionar Objeto", command=self.abrir_popup_objetos).pack(side="left", padx=2)
+        tk.Button(top_row_frame, text="Aplicar Transformação", command=self.abrir_transformacoes_popup).pack(side="left", padx=2)
+        
+        tk.Label(top_row_frame, text="  Navegação:").pack(side="left", padx=(10,0))
+        tk.Button(top_row_frame, text="←", command=lambda: self.pan(10, 0)).pack(side="left")
+        tk.Button(top_row_frame, text="→", command=lambda: self.pan(-10, 0)).pack(side="left")
+        tk.Button(top_row_frame, text="↑", command=lambda: self.pan(0, -10)).pack(side="left")
+        tk.Button(top_row_frame, text="↓", command=lambda: self.pan(0, 10)).pack(side="left")
+        tk.Button(top_row_frame, text="Zoom +", command=lambda: self.zoom(0.9)).pack(side="left", padx=(5, 2))
+        tk.Button(top_row_frame, text="Zoom -", command=lambda: self.zoom(1.1)).pack(side="left")
+        tk.Button(top_row_frame, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5, 2))
+
+        # --- Fileira Inferior ---
+        clipping_frame = tk.Frame(bottom_row_frame, borderwidth=1, relief="groove")
+        clipping_frame.pack() # Centraliza por padrão
+
+        tk.Label(clipping_frame, text="Algoritmo de Clipping de Reta:").pack(side="left", padx=(5,0))
         self.alg_reta_clip_var = tk.StringVar(value="cs")
         tk.Radiobutton(clipping_frame, text="Cohen-Sutherland", variable=self.alg_reta_clip_var, value="cs", command=self.redesenhar).pack(side="left")
-        tk.Radiobutton(clipping_frame, text="Liang-Barsky", variable=self.alg_reta_clip_var, value="lb", command=self.redesenhar).pack(side="left")
+        tk.Radiobutton(clipping_frame, text="Liang-Barsky", variable=self.alg_reta_clip_var, value="lb", command=self.redesenhar).pack(side="left", padx=(0,5))
 
         self.canvas.bind("<Configure>", self.on_canvas_resize)
         self.selected_color = "black"
@@ -599,12 +611,12 @@ class App(tk.Frame):
         self.viewport.wmin = (cx - largura / 2, cy - altura / 2)
         self.viewport.wmax = (cx + largura / 2, cy + altura / 2)
         self.redesenhar()
+
+
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("SGI 2D - Clipping (Tamanho Fixo)")
     root.geometry("1000x700")
-    
     root.resizable(False, False)
-    
     app = App(root)
     app.mainloop()
