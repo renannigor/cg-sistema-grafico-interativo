@@ -778,7 +778,7 @@ class App(tk.Frame):
     def abrir_popup_objetos(self):
         popup = tk.Toplevel(self)
         popup.title("Incluir Objeto")
-        popup.geometry("350x400")
+        popup.geometry("450x500")
 
         frame_cor = tk.Frame(popup, pady=5)
         frame_cor.pack(fill="x", padx=10)
