@@ -441,7 +441,7 @@ class Clipping:
             if aresta == 'bottom': return p[1] >= wmin[1]
             if aresta == 'top': return p[1] <= wmax[1]
         
-         def intersecao(p1, p2, aresta):
+        def intersecao(p1, p2, aresta):
             x1, y1 = p1
             x2, y2 = p2
             dx, dy = x2 - x1, y2 - y1
