@@ -175,7 +175,7 @@ class Camera:
         u = Transformacoes3D._normalizar(np.cross(self.vup, n))
         v = Transformacoes3D._normalizar(np.cross(n, u))
 
-        movimento_world = (d_direita * -u) + (d_cima * v) + (d_frente * -n)
+        movimento_world = (d_direita * -u) + (d_cima * v) + (d_frente * n)
         
         matriz_movimento = Transformacoes3D.get_matriz_translacao(
             movimento_world[0], movimento_world[1], movimento_world[2]
@@ -757,8 +757,8 @@ class App(tk.Frame):
         tk.Button(mid_row, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5,2))
 
         tk.Label(proj_row, text="Nav. 3D (Câmera):").pack(side="left")
-        tk.Button(proj_row, text="Frente", command=lambda: (self.camera.mover_relativo(0, 0, -10), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Trás", command=lambda: (self.camera.mover_relativo(0, 0, 10), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Frente", command=lambda: (self.camera.mover_relativo(0, 0, 10), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Trás", command=lambda: (self.camera.mover_relativo(0, 0, -10), self.redesenhar())).pack(side="left")
         tk.Button(proj_row, text="Esq.", command=lambda: (self.camera.mover_relativo(-10, 0, 0), self.redesenhar())).pack(side="left")
         tk.Button(proj_row, text="Dir.", command=lambda: (self.camera.mover_relativo(10, 0, 0), self.redesenhar())).pack(side="left")
         tk.Button(proj_row, text="Cima", command=lambda: (self.camera.mover_relativo(0, 10, 0), self.redesenhar())).pack(side="left")
