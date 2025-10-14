@@ -169,6 +169,22 @@ class Camera:
         )
         self.matriz_wc = self._calcular_matriz_wc()
 
+    def mover_relativo(self, d_direita, d_cima, d_frente):
+        vpn = self.p_foco.coords[:3] - self.vrp.coords[:3]
+        n = Transformacoes3D._normalizar(vpn)
+        u = Transformacoes3D._normalizar(np.cross(self.vup, n))
+        v = Transformacoes3D._normalizar(np.cross(n, u))
+
+        movimento_world = (d_direita * -u) + (d_cima * v) + (d_frente * -n)
+        
+        matriz_movimento = Transformacoes3D.get_matriz_translacao(
+            movimento_world[0], movimento_world[1], movimento_world[2]
+        )
+
+        self.vrp.aplicar_transformacao(matriz_movimento)
+        self.p_foco.aplicar_transformacao(matriz_movimento)
+        self.matriz_wc = self._calcular_matriz_wc()
+
 class Transformacoes:
     @staticmethod
     def get_matriz_translacao(dx, dy):
@@ -741,12 +757,12 @@ class App(tk.Frame):
         tk.Button(mid_row, text="Rot. Win", command=self.popup_rotacionar_window).pack(side="left", padx=(5,2))
 
         tk.Label(proj_row, text="Nav. 3D (Câmera):").pack(side="left")
-        tk.Button(proj_row, text="Frente", command=lambda: (self.camera.mover(0,0,-10), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Trás", command=lambda: (self.camera.mover(0,0,10), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Esq.", command=lambda: (self.camera.mover(-10,0,0), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Dir.", command=lambda: (self.camera.mover(10,0,0), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Cima", command=lambda: (self.camera.mover(0,10,0), self.redesenhar())).pack(side="left")
-        tk.Button(proj_row, text="Baixo", command=lambda: (self.camera.mover(0,-10,0), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Frente", command=lambda: (self.camera.mover_relativo(0, 0, -10), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Trás", command=lambda: (self.camera.mover_relativo(0, 0, 10), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Esq.", command=lambda: (self.camera.mover_relativo(-10, 0, 0), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Dir.", command=lambda: (self.camera.mover_relativo(10, 0, 0), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Cima", command=lambda: (self.camera.mover_relativo(0, 10, 0), self.redesenhar())).pack(side="left")
+        tk.Button(proj_row, text="Baixo", command=lambda: (self.camera.mover_relativo(0, -10, 0), self.redesenhar())).pack(side="left")
         tk.Button(proj_row, text="⟲(Y)", command=lambda: (self.camera.girar(np.deg2rad(5),0), self.redesenhar())).pack(side="left", padx=(5,0))
         tk.Button(proj_row, text="⟳(Y)", command=lambda: (self.camera.girar(np.deg2rad(-5),0), self.redesenhar())).pack(side="left")
         tk.Button(proj_row, text="⬆(P)", command=lambda: (self.camera.girar(0, np.deg2rad(5)), self.redesenhar())).pack(side="left")
