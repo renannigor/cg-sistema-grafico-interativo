@@ -1,0 +1,21 @@
+v 2.0 -2.0 -0.5
+v 3.0 -2.0 -0.5
+v 3.0 2.0 -0.5
+v 2.0 2.0 -0.5
+v 2.0 -2.0 0.5
+v 3.0 -2.0 0.5
+v 3.0 2.0 0.5
+v 2.0 2.0 0.5
+
+# Face traseira
+f 1 2 3 4
+# Face frontal
+f 5 6 7 8
+# Face inferior
+f 1 5 6 2
+# Face superior
+f 4 3 7 8
+# Face esquerda
+f 1 4 8 5
+# Face direita
+f 2 6 7 3
