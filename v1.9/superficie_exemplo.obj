@@ -1,0 +1,60 @@
+# Exemplo de arquivo .obj para Superfícies de Bézier Bicúbicas
+# Contém 3 retalhos (patches), cada um definido por 16 pontos de controle.
+# Total de 48 vértices.
+
+# Retalho 1
+v -1.5 1.0 1.0
+v -0.5 1.0 1.0
+v 0.5 1.0 1.0
+v 1.5 1.0 1.0
+v -1.5 0.5 1.5
+v -0.5 0.5 2.0
+v 0.5 0.5 2.0
+v 1.5 0.5 1.5
+v -1.5 -0.5 1.5
+v -0.5 -0.5 2.0
+v 0.5 -0.5 2.0
+v 1.5 -0.5 1.5
+v -1.5 -1.0 1.0
+v -0.5 -1.0 1.0
+v 0.5 -1.0 1.0
+v 1.5 -1.0 1.0
+
+# Retalho 2 (Continuação do Retalho 1 para a direita)
+# A primeira coluna de pontos de controle é igual à última coluna do Retalho 1
+# para garantir continuidade G0.
+v 1.5 1.0 1.0
+v 2.5 1.0 1.0
+v 3.5 1.0 1.0
+v 4.5 1.0 1.0
+v 1.5 0.5 1.5
+v 2.5 0.5 1.0
+v 3.5 0.5 1.0
+v 4.5 0.5 1.5
+v 1.5 -0.5 1.5
+v 2.5 -0.5 1.0
+v 3.5 -0.5 1.0
+v 4.5 -0.5 1.5
+v 1.5 -1.0 1.0
+v 2.5 -1.0 1.0
+v 3.5 -1.0 1.0
+v 4.5 -1.0 1.0
+
+# Retalho 3 (Abaixo do Retalho 1)
+# A primeira linha de pontos de controle é igual à última linha do Retalho 1.
+v -1.5 -1.0 1.0
+v -0.5 -1.0 1.0
+v 0.5 -1.0 1.0
+v 1.5 -1.0 1.0
+v -1.5 -1.5 1.5
+v -0.5 -1.5 0.5
+v 0.5 -1.5 0.5
+v 1.5 -1.5 1.5
+v -1.5 -2.5 1.5
+v -0.5 -2.5 0.5
+v 0.5 -2.5 0.5
+v 1.5 -2.5 1.5
+v -1.5 -3.0 1.0
+v -0.5 -3.0 1.0
+v 0.5 -3.0 1.0
+v 1.5 -3.0 1.0
