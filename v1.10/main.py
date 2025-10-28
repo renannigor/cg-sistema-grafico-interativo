@@ -92,12 +92,12 @@ class App(tk.Frame):
         tk.Button(
             proj_row,
             text="Esq.",
-            command=lambda: (self.camera.mover_relativo(-10, 0, 0), self.redesenhar()),
+            command=lambda: (self.camera.mover_relativo(10, 0, 0), self.redesenhar()),
         ).pack(side="left")
         tk.Button(
             proj_row,
             text="Dir.",
-            command=lambda: (self.camera.mover_relativo(10, 0, 0), self.redesenhar()),
+            command=lambda: (self.camera.mover_relativo(-10, 0, 0), self.redesenhar()),
         ).pack(side="left")
         tk.Button(
             proj_row,
