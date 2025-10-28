@@ -428,7 +428,9 @@ class Viewport:
         yvp = vpmin[1] + (1 - (yw - w_min[1]) / yw_range) * yvp_range
         return (xvp, yvp)
 
-    def desenhar(self, displayfile: DisplayFile, alg_reta_clip: str, tipo_projecao: str):
+    def desenhar(
+        self, displayfile: DisplayFile, alg_reta_clip: str, tipo_projecao: str
+    ):
         self.canvas.delete("all")
         canvas_width, canvas_height = (
             self.canvas.winfo_width(),
@@ -443,7 +445,14 @@ class Viewport:
         ), canvas_height - (2 * canvas_margin)
         w_width, w_height = self.wmax[0] - self.wmin[0], self.wmax[1] - self.wmin[1]
 
-        w_aspect = w_width / w_height if w_height != 0 else 1.0
+        if w_height == 0:
+            w_height = 1e-9
+        
+        w_aspect = w_width / w_height
+        
+        if available_height == 0:
+            available_height = 1e-9
+            
         available_aspect = available_width / available_height
 
         if available_aspect > w_aspect:
@@ -468,34 +477,32 @@ class Viewport:
             self.wmin[1] + self.wmax[1]
         ) / 2.0
         ang_rad = -np.deg2rad(self.window_angle)
+        
+        axis_len = max(abs(self.wmin[0]), abs(self.wmax[0]), abs(self.wmin[1]), abs(self.wmax[1])) * 10
+        
+        p_x_start_world = (-axis_len, 0)
+        p_x_end_world = (axis_len, 0)
+        p_y_start_world = (0, -axis_len)
+        p_y_end_world = (0, axis_len)
 
-        def transform_coord(xw, yw):
-            xr, yr = self._rotacionar_ponto_em_torno_de(xw, yw, cx, cy, ang_rad)
-            return self.transformar(xr, yr, self.wmin, self.wmax, vpmin, vpmax)
+        p_x_start_r = self._rotacionar_ponto_em_torno_de(p_x_start_world[0], p_x_start_world[1], cx, cy, ang_rad)
+        p_x_end_r = self._rotacionar_ponto_em_torno_de(p_x_end_world[0], p_x_end_world[1], cx, cy, ang_rad)
+        p_y_start_r = self._rotacionar_ponto_em_torno_de(p_y_start_world[0], p_y_start_world[1], cx, cy, ang_rad)
+        p_y_end_r = self._rotacionar_ponto_em_torno_de(p_y_end_world[0], p_y_end_world[1], cx, cy, ang_rad)
 
-        p_x_start_vp = transform_coord(self.wmin[0], 0)
-        p_x_end_vp = transform_coord(self.wmax[0], 0)
+        x_axis_clipped = self.clipping.cohen_sutherland(p_x_start_r, p_x_end_r, self.wmin, self.wmax)
+        y_axis_clipped = self.clipping.cohen_sutherland(p_y_start_r, p_y_end_r, self.wmin, self.wmax)
 
-        p_y_start_vp = transform_coord(0, self.wmin[1])
-        p_y_end_vp = transform_coord(0, self.wmax[1])
+        if x_axis_clipped:
+            p1_vp = self.transformar(x_axis_clipped[0][0], x_axis_clipped[0][1], self.wmin, self.wmax, vpmin, vpmax)
+            p2_vp = self.transformar(x_axis_clipped[1][0], x_axis_clipped[1][1], self.wmin, self.wmax, vpmin, vpmax)
+            self.canvas.create_line(p1_vp, p2_vp, fill="gray", dash=(2, 2))
+        
+        if y_axis_clipped:
+            p1_vp = self.transformar(y_axis_clipped[0][0], y_axis_clipped[0][1], self.wmin, self.wmax, vpmin, vpmax)
+            p2_vp = self.transformar(y_axis_clipped[1][0], y_axis_clipped[1][1], self.wmin, self.wmax, vpmin, vpmax)
+            self.canvas.create_line(p1_vp, p2_vp, fill="gray", dash=(2, 2))
 
-        self.canvas.create_line(
-            p_x_start_vp[0],
-            p_x_start_vp[1],
-            p_x_end_vp[0],
-            p_x_end_vp[1],
-            fill="gray",
-            dash=(2, 2),
-        )
-
-        self.canvas.create_line(
-            p_y_start_vp[0],
-            p_y_start_vp[1],
-            p_y_end_vp[0],
-            p_y_end_vp[1],
-            fill="gray",
-            dash=(2, 2),
-        )
 
         for obj in displayfile.listar():
             if isinstance(obj, (Objeto3D, SuperficieBezier, SuperficieBSpline)):
@@ -506,12 +513,13 @@ class Viewport:
                 arestas_para_processar = []
                 if obj.tipo == TipoObjeto.OBJETO_3D.value:
                     for idx1, idx2 in obj_camera_coords.arestas:
-                        arestas_para_processar.append(
-                            (
-                                obj_camera_coords.vertices[idx1],
-                                obj_camera_coords.vertices[idx2],
+                        if 0 <= idx1 < len(obj_camera_coords.vertices) and 0 <= idx2 < len(obj_camera_coords.vertices):
+                            arestas_para_processar.append(
+                                (
+                                    obj_camera_coords.vertices[idx1],
+                                    obj_camera_coords.vertices[idx2],
+                                )
                             )
-                        )
                 elif obj.tipo in (
                     TipoObjeto.SUPERFICIE_BEZIER.value,
                     TipoObjeto.SUPERFICIE_BSPLINE.value,
@@ -532,15 +540,19 @@ class Viewport:
                     else:
                         p1_2d, p2_2d = (p1_cam.x, p1_cam.y), (p2_cam.x, p2_cam.y)
 
+                    p1_r = self._rotacionar_ponto_em_torno_de(p1_2d[0], p1_2d[1], cx, cy, ang_rad)
+                    p2_r = self._rotacionar_ponto_em_torno_de(p2_2d[0], p2_2d[1], cx, cy, ang_rad)
+
                     reta_clipada_coords = self.clipping.cohen_sutherland(
-                        p1_2d, p2_2d, self.wmin, self.wmax
+                        p1_r, p2_r, self.wmin, self.wmax
                     )
+                    
                     if reta_clipada_coords:
-                        p1_vp = transform_coord(
-                            reta_clipada_coords[0][0], reta_clipada_coords[0][1]
+                        p1_vp = self.transformar(
+                            reta_clipada_coords[0][0], reta_clipada_coords[0][1], self.wmin, self.wmax, vpmin, vpmax
                         )
-                        p2_vp = transform_coord(
-                            reta_clipada_coords[1][0], reta_clipada_coords[1][1]
+                        p2_vp = self.transformar(
+                            reta_clipada_coords[1][0], reta_clipada_coords[1][1], self.wmin, self.wmax, vpmin, vpmax
                         )
                         linha_width = 2 if obj.tipo == TipoObjeto.OBJETO_3D.value else 1
                         self.canvas.create_line(
@@ -549,53 +561,82 @@ class Viewport:
                 continue
 
             if obj.tipo == TipoObjeto.CURVA.value:
-                segmentos_de_linha = self.clipping.clip_curva_para_linhas(
-                    obj.coords, self.wmin, self.wmax
-                )
-                for linha in segmentos_de_linha:
-                    p1_vp, p2_vp = transform_coord(*linha[0]), transform_coord(
-                        *linha[1]
-                    )
-                    self.canvas.create_line(p1_vp, p2_vp, fill=obj.cor, width=2)
+                pontos_controle_total = obj.coords
+                segmentos_de_linha = []
+                if len(pontos_controle_total) >= 4:
+                    num_segmentos = (len(pontos_controle_total) - 4) // 3 + 1
+                    for i in range(num_segmentos):
+                        inicio_idx = i * 3
+                        pontos_segmento_atual = pontos_controle_total[inicio_idx : inicio_idx + 4]
+                        
+                        pontos_gerados = self.clipping._gerar_pontos_bezier(pontos_segmento_atual)
+                        for j in range(len(pontos_gerados) - 1):
+                            segmentos_de_linha.append([pontos_gerados[j], pontos_gerados[j+1]])
+
+                for p1, p2 in segmentos_de_linha:
+                    p1_r = self._rotacionar_ponto_em_torno_de(p1[0], p1[1], cx, cy, ang_rad)
+                    p2_r = self._rotacionar_ponto_em_torno_de(p2[0], p2[1], cx, cy, ang_rad)
+                    
+                    reta_clipada = self.clipping.cohen_sutherland(p1_r, p2_r, self.wmin, self.wmax)
+                    
+                    if reta_clipada:
+                        p1_vp = self.transformar(reta_clipada[0][0], reta_clipada[0][1], self.wmin, self.wmax, vpmin, vpmax)
+                        p2_vp = self.transformar(reta_clipada[1][0], reta_clipada[1][1], self.wmin, self.wmax, vpmin, vpmax)
+                        self.canvas.create_line(p1_vp, p2_vp, fill=obj.cor, width=2)
                 continue
 
             elif obj.tipo == TipoObjeto.B_SPLINE.value:
                 segmentos_de_reta = self.bspline_generator.gerar_segmentos(obj.coords)
                 for p1, p2 in segmentos_de_reta:
+                    p1_r = self._rotacionar_ponto_em_torno_de(p1[0], p1[1], cx, cy, ang_rad)
+                    p2_r = self._rotacionar_ponto_em_torno_de(p2[0], p2[1], cx, cy, ang_rad)
+                    
                     reta_clipada_coords = self.clipping.cohen_sutherland(
-                        p1, p2, self.wmin, self.wmax
+                        p1_r, p2_r, self.wmin, self.wmax
                     )
+                    
                     if reta_clipada_coords:
-                        p1_vp, p2_vp = transform_coord(
-                            *reta_clipada_coords[0]
-                        ), transform_coord(*reta_clipada_coords[1])
+                        p1_vp = self.transformar(reta_clipada_coords[0][0], reta_clipada_coords[0][1], self.wmin, self.wmax, vpmin, vpmax)
+                        p2_vp = self.transformar(reta_clipada_coords[1][0], reta_clipada_coords[1][1], self.wmin, self.wmax, vpmin, vpmax)
                         self.canvas.create_line(p1_vp, p2_vp, fill=obj.cor, width=2)
                 continue
 
-            obj_clipado = self.clipping.clip(obj, self.wmin, self.wmax, alg_reta_clip)
-            if not obj_clipado:
-                continue
+            if obj.tipo == TipoObjeto.PONTO.value:
+                x, y = obj.coords[0]
+                xr, yr = self._rotacionar_ponto_em_torno_de(x, y, cx, cy, ang_rad)
+                
+                if (self.wmin[0] <= xr <= self.wmax[0] and self.wmin[1] <= yr <= self.wmax[1]):
+                    x_vp, y_vp = self.transformar(xr, yr, self.wmin, self.wmax, vpmin, vpmax)
+                    self.canvas.create_oval(
+                        x_vp - 2, y_vp - 2, x_vp + 2, y_vp + 2,
+                        fill=obj.cor, outline=obj.cor
+                    )
+            
+            elif obj.tipo == TipoObjeto.RETA.value:
+                p1, p2 = obj.coords[0], obj.coords[1]
+                p1_r = self._rotacionar_ponto_em_torno_de(p1[0], p1[1], cx, cy, ang_rad)
+                p2_r = self._rotacionar_ponto_em_torno_de(p2[0], p2[1], cx, cy, ang_rad)
+                
+                clip_alg = self.clipping.cohen_sutherland if alg_reta_clip == "cs" else self.clipping.liang_barsky
+                reta_clipada = clip_alg(p1_r, p2_r, self.wmin, self.wmax)
+                
+                if reta_clipada:
+                    p1_vp = self.transformar(reta_clipada[0][0], reta_clipada[0][1], self.wmin, self.wmax, vpmin, vpmax)
+                    p2_vp = self.transformar(reta_clipada[1][0], reta_clipada[1][1], self.wmin, self.wmax, vpmin, vpmax)
+                    self.canvas.create_line(p1_vp, p2_vp, fill=obj.cor, width=2)
 
-            coords_vp = [transform_coord(x, y) for (x, y) in obj_clipado.coords]
-
-            if obj_clipado.tipo == TipoObjeto.PONTO.value:
-                x, y = coords_vp[0]
-                self.canvas.create_oval(
-                    x - 2,
-                    y - 2,
-                    x + 2,
-                    y + 2,
-                    fill=obj_clipado.cor,
-                    outline=obj_clipado.cor,
-                )
-            elif obj_clipado.tipo == TipoObjeto.RETA.value:
-                flat = [c for p in coords_vp for c in p]
-                if len(flat) >= 4:
-                    self.canvas.create_line(*flat, fill=obj_clipado.cor, width=2)
-            elif obj_clipado.tipo == TipoObjeto.POLIGONO.value:
-                if len(coords_vp) > 1:
-                    fill_color = obj_clipado.cor if obj_clipado.preenchido else ""
-                    outline_color = "" if obj_clipado.preenchido else obj_clipado.cor
+            elif obj.tipo == TipoObjeto.POLIGONO.value:
+                coords_rotadas = []
+                for x, y in obj.coords:
+                    coords_rotadas.append(self._rotacionar_ponto_em_torno_de(x, y, cx, cy, ang_rad))
+                
+                coords_clipadas = self.clipping.sutherland_hodgman(coords_rotadas, self.wmin, self.wmax)
+                
+                if coords_clipadas and len(coords_clipadas) > 1:
+                    coords_vp = [self.transformar(x, y, self.wmin, self.wmax, vpmin, vpmax) for (x, y) in coords_clipadas]
+                    
+                    fill_color = obj.cor if obj.preenchido else ""
+                    outline_color = "" if obj.preenchido else obj.cor
                     self.canvas.create_polygon(
                         coords_vp, fill=fill_color, outline=outline_color, width=2
                     )
