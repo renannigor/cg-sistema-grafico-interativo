@@ -228,7 +228,7 @@ class TipoObjeto(Enum):
     B_SPLINE = "b-spline"
     OBJETO_3D = "objeto_3d"
     SUPERFICIE_BEZIER = "superficie_bezier"
-    SUPERFICIE_BSPLINE = "superficie_bspline"  # <-- ADICIONE ESTA LINHA
+    SUPERFICIE_BSPLINE = "superficie_bspline"
 
 
 class Objeto:
@@ -950,7 +950,6 @@ class Viewport:
                                 obj_camera_coords.vertices[idx2],
                             )
                         )
-                # MODIFICAÇÃO 2: Inclua SUPERFICIE_BSPLINE.value na checagem
                 elif obj.tipo in (
                     TipoObjeto.SUPERFICIE_BEZIER.value,
                     TipoObjeto.SUPERFICIE_BSPLINE.value,
@@ -1914,7 +1913,6 @@ class App(tk.Frame):
                 )
                 obj.aplicar_transformacao_3d(matriz)
             elif tipo_transf == "escalonamento":
-                # INÍCIO DA MODIFICAÇÃO
                 if isinstance(obj, Objeto3D):
                     cx, cy, cz = obj.get_centro_objeto_3d()
                 elif isinstance(obj, (SuperficieBezier, SuperficieBSpline)):
@@ -1928,7 +1926,6 @@ class App(tk.Frame):
                     cx = sum(p.x for p in todos_pontos) / n_pontos
                     cy = sum(p.y for p in todos_pontos) / n_pontos
                     cz = sum(p.z for p in todos_pontos) / n_pontos
-                # FIM DA MODIFICAÇÃO
 
                 t1 = Transformacoes3D.get_matriz_translacao(-cx, -cy, -cz)
                 s = Transformacoes3D.get_matriz_escalonamento(
@@ -1942,7 +1939,6 @@ class App(tk.Frame):
                 angulo_rad = np.deg2rad(kwargs["angulo"])
                 eixo = kwargs["eixo"]
 
-                # INÍCIO DA MODIFICAÇÃO
                 if isinstance(obj, Objeto3D):
                     cx, cy, cz = obj.get_centro_objeto_3d()
                 elif isinstance(obj, (SuperficieBezier, SuperficieBSpline)):
@@ -1956,7 +1952,6 @@ class App(tk.Frame):
                     cx = sum(p.x for p in todos_pontos) / n_pontos
                     cy = sum(p.y for p in todos_pontos) / n_pontos
                     cz = sum(p.z for p in todos_pontos) / n_pontos
-                # FIM DA MODIFICAÇÃO
 
                 t1 = Transformacoes3D.get_matriz_translacao(-cx, -cy, -cz)
                 if eixo == "x":
