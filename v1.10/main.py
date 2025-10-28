@@ -112,22 +112,22 @@ class App(tk.Frame):
         tk.Button(
             proj_row,
             text="⟲(Y)",
-            command=lambda: (self.camera.girar(np.deg2rad(5), 0), self.redesenhar()),
+            command=lambda: (self.camera.girar(np.deg2rad(-5), 0), self.redesenhar()),
         ).pack(side="left", padx=(5, 0))
         tk.Button(
             proj_row,
             text="⟳(Y)",
-            command=lambda: (self.camera.girar(np.deg2rad(-5), 0), self.redesenhar()),
+            command=lambda: (self.camera.girar(np.deg2rad(5), 0), self.redesenhar()),
         ).pack(side="left")
         tk.Button(
             proj_row,
             text="⬆(P)",
-            command=lambda: (self.camera.girar(0, np.deg2rad(5)), self.redesenhar()),
+            command=lambda: (self.camera.girar(0, np.deg2rad(-5)), self.redesenhar()),
         ).pack(side="left")
         tk.Button(
             proj_row,
             text="⬇(P)",
-            command=lambda: (self.camera.girar(0, np.deg2rad(-5)), self.redesenhar()),
+            command=lambda: (self.camera.girar(0, np.deg2rad(5)), self.redesenhar()),
         ).pack(side="left")
 
         self.projection_type_var = tk.StringVar(value="ortogonal")

@@ -527,10 +527,11 @@ class Viewport:
                     arestas_para_processar = obj_camera_coords.gerar_malha()
 
                 for p1_cam, p2_cam in arestas_para_processar:
+                    if (p1_cam.z <= 1 or p2_cam.z <= 1):
+                        continue
+
                     if tipo_projecao == "perspectiva":
                         d = self.camera.d
-                        if p1_cam.z <= 1 or p2_cam.z <= 1:
-                            continue
 
                         x1_p = d * p1_cam.x / p1_cam.z
                         y1_p = d * p1_cam.y / p1_cam.z
