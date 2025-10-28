@@ -428,9 +428,7 @@ class Viewport:
         yvp = vpmin[1] + (1 - (yw - w_min[1]) / yw_range) * yvp_range
         return (xvp, yvp)
 
-    def desenhar(
-        self, displayfile: DisplayFile, alg_reta_clip: str, tipo_projecao: str
-    ):
+    def desenhar(self, displayfile: DisplayFile, alg_reta_clip: str, tipo_projecao: str):
         self.canvas.delete("all")
         canvas_width, canvas_height = (
             self.canvas.winfo_width(),
@@ -475,27 +473,26 @@ class Viewport:
             xr, yr = self._rotacionar_ponto_em_torno_de(xw, yw, cx, cy, ang_rad)
             return self.transformar(xr, yr, self.wmin, self.wmax, vpmin, vpmax)
 
-        origem_vp = transform_coord(0, 0)
-        p_inicio_eixo_x, p_fim_eixo_x = transform_coord(
-            self.wmin[0], 0
-        ), transform_coord(self.wmax[0], 0)
-        p_inicio_eixo_y, p_fim_eixo_y = transform_coord(
-            0, self.wmin[1]
-        ), transform_coord(0, self.wmax[1])
+        p_x_start_vp = transform_coord(self.wmin[0], 0)
+        p_x_end_vp = transform_coord(self.wmax[0], 0)
+
+        p_y_start_vp = transform_coord(0, self.wmin[1])
+        p_y_end_vp = transform_coord(0, self.wmax[1])
 
         self.canvas.create_line(
-            p_inicio_eixo_x[0],
-            origem_vp[1],
-            p_fim_eixo_x[0],
-            origem_vp[1],
+            p_x_start_vp[0],
+            p_x_start_vp[1],
+            p_x_end_vp[0],
+            p_x_end_vp[1],
             fill="gray",
             dash=(2, 2),
         )
+
         self.canvas.create_line(
-            origem_vp[0],
-            p_inicio_eixo_y[1],
-            origem_vp[0],
-            p_fim_eixo_y[1],
+            p_y_start_vp[0],
+            p_y_start_vp[1],
+            p_y_end_vp[0],
+            p_y_end_vp[1],
             fill="gray",
             dash=(2, 2),
         )
@@ -524,9 +521,7 @@ class Viewport:
                 for p1_cam, p2_cam in arestas_para_processar:
                     if tipo_projecao == "perspectiva":
                         d = self.camera.d
-                        if (
-                            p1_cam.z <= 1 or p2_cam.z <= 1
-                        ):  
+                        if p1_cam.z <= 1 or p2_cam.z <= 1:
                             continue
 
                         x1_p = d * p1_cam.x / p1_cam.z
@@ -534,7 +529,7 @@ class Viewport:
                         x2_p = d * p2_cam.x / p2_cam.z
                         y2_p = d * p2_cam.y / p2_cam.z
                         p1_2d, p2_2d = (x1_p, y1_p), (x2_p, y2_p)
-                    else:  
+                    else:
                         p1_2d, p2_2d = (p1_cam.x, p1_cam.y), (p2_cam.x, p2_cam.y)
 
                     reta_clipada_coords = self.clipping.cohen_sutherland(
